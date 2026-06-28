@@ -13,6 +13,7 @@ import '../../scripts/initializers/wishlist.js';
 import '../../scripts/initializers/cart.js';
 
 // Initialize
+console.log("my own wishlist block");
 
 // Inherit Fetch GraphQL Instance (Catalog Service)
 pdpApi.setEndpoint(CS_FETCH_GRAPHQL);
