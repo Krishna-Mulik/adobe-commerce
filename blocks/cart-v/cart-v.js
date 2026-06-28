@@ -1,6 +1,6 @@
-
-import { render as cartProvider } from '@dropins/storefront-cart/render.js';
-import CartContainer from '@dropins/storefront-cart/containers/Cart.js';
+import { render as provider } from '@dropins/storefront-cart/render.js';
+import CartSummaryList from '@dropins/storefront-cart/containers/CartSummaryList.js';
+import OrderSummary from '@dropins/storefront-cart/containers/OrderSummary.js';
 import { events } from '@dropins/tools/event-bus.js';
 
 /**
@@ -8,56 +8,83 @@ import { events } from '@dropins/tools/event-bus.js';
  * @param {Element} block The block element
  */
 export default async function decorate(block) {
-  // Clear any authored content (this block is a pure drop-in)
+  // Read authored content (none for this block, but defensive)
+  const rows = Array.from(block.children);
+  if (rows.length === 0) {
+    console.warn('Cart block has no rows');
+    return;
+  }
+
+  // Build layout DOM
+  const cartContainer = document.createElement('div');
+  cartContainer.className = 'cart-summary-container';
+
+  const orderSummaryContainer = document.createElement('div');
+  orderSummaryContainer.className = 'order-summary-container';
+
   block.textContent = '';
+  block.append(cartContainer, orderSummaryContainer);
 
-  // Create mount point
-  const cartMount = document.createElement('div');
-  cartMount.classList.add('cart-container');
-  block.append(cartMount);
-
-  // Mount Cart drop-in container
-  cartProvider(CartContainer, {
+  // Mount CartSummaryList container
+  provider(CartSummaryList, {
+    hideHeading: true,
+    hideFooter: false,
+    routeProduct: '/product/:sku',
+    routeEmptyCartCTA: '/',
+    enableRemoveItem: true,
+    enableUpdateItemQuantity: true,
     slots: {
-      // Custom empty cart message
-      EmptyCart: (ctx) => {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.classList.add('cart-empty-message');
-        emptyMessage.textContent = 'Your cart is empty. Start shopping now!';
-        ctx.replaceWith(emptyMessage);
+      Heading: (ctx) => {
+        const heading = document.createElement('h2');
+        heading.className = 'cart-heading';
+        heading.textContent = 'Shopping Cart';
+        ctx.replaceWith(heading);
       },
-      // Custom cart footer (e.g., promotional banner)
+      EmptyCart: (ctx) => {
+        const empty = document.createElement('div');
+        empty.className = 'cart-empty';
+        empty.innerHTML = '<p>Your cart is empty.</p><a href="/" class="button">Continue Shopping</a>';
+        ctx.replaceWith(empty);
+      },
       Footer: (ctx) => {
         const footer = document.createElement('div');
-        footer.classList.add('cart-footer');
-        footer.innerHTML = `
-          <div class="promo-banner">
-            <p>Free shipping on orders over $50!</p>
-          </div>
-        `;
+        footer.className = 'cart-footer';
+        footer.innerHTML = '<a href="/checkout" class="button primary">Proceed to Checkout</a>';
         ctx.append(footer);
+      },
+      Thumbnail: (ctx) => {
+        const img = document.createElement('img');
+        img.className = 'cart-item-thumbnail';
+        img.src = ctx.data?.product?.thumbnail?.url || '';
+        img.alt = ctx.data?.product?.thumbnail?.label || 'Product thumbnail';
+        img.loading = 'lazy';
+        ctx.replaceWith(img);
       }
-    },
-    onSuccess: () => {
-      console.debug('Cart container mounted successfully');
-    },
-    onError: (error) => {
-      console.error('Cart container failed to mount:', error);
-      const errorMessage = document.createElement('div');
-      errorMessage.classList.add('cart-error');
-      errorMessage.textContent = 'Unable to load cart. Please refresh the page.';
-      cartMount.textContent = '';
-      cartMount.append(errorMessage);
     }
-  })(cartMount);
+  })(cartContainer);
+
+  // Mount OrderSummary container
+  provider(OrderSummary, {
+    routeCheckout: '/checkout',
+    enableCoupons: true,
+    enableGiftCards: false,
+    showTotalSaved: true
+  })(orderSummaryContainer);
 
   // Subscribe to cart events
   events.on('cart/updated', (payload) => {
-    console.debug('Cart updated:', payload?.items?.length || 0, 'items');
+    if (!payload?.items?.length) {
+      block.classList.add('empty');
+    } else {
+      block.classList.remove('empty');
+    }
   });
 
-  events.on('cart/error', (payload) => {
-    console.error('Cart error:', payload?.message || 'Unknown error');
-  });
+  // Initialize cart data
+  const { getCartData } = await import('@dropins/storefront-cart/api.js');
+  try {
+    await getCartData();
+  } catch (error) {
+    console.error('Failed to initialize cart:', error);
+  }
 }
-    
